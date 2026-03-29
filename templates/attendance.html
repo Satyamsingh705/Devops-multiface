@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AMS · Attendance</title>
+  <link rel="icon" href="/static/ams-logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#f4f5f7;
+      --card:#ffffff;
+      --text:#1f2937;
+      --muted:#6b7280;
+      --border:#e5e7eb;
+      --shadow: 0 10px 30px rgba(17,24,39,.10);
+      --orange:#f47a20;
+      --orange2:#ff9c42;
+      --blue:#1976d2;
+      --blue2:#2f8cff;
+      --good:#16a34a;
+      --warn:#d97706;
+    }
+    *{box-sizing:border-box}
+    html, body{height:100%}
+    body{
+      margin:0;
+      font-family: Poppins, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: var(--bg);
+      color: var(--text);
+      min-height:100vh;
+    }
+
+    .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #ffffff;
+      border-bottom: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 2px 10px rgba(17,24,39,.08);
+    }
+    .topbarInner{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 10px 20px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 14px;
+    }
+    .brand{display:flex; align-items:center; gap: 12px; min-width: 280px}
+    .brandLogo{
+      width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      overflow:hidden;
+      border: 1px solid rgba(0,0,0,.10);
+      background: #fbf1f1;
+      display:grid;
+      place-items:center;
+    }
+    .brandLogo img{width:100%; height:100%; object-fit:cover; object-position: 50% 58%; transform: scale(1.12); display:block}
+    .brandText{display:flex; flex-direction:column; line-height:1.05}
+    .brandName{font-weight: 900; letter-spacing: .2px; font-size: 18px}
+    .brandName .u{color: var(--orange)}
+    .brandName .ms{color:#111}
+    .brandSub{font-size: 11px; color: rgba(17,24,39,.70); text-transform: uppercase; letter-spacing: .12em; margin-top: 2px}
+
+    .right{display:flex; align-items:center; gap: 10px}
+    .profileMenu{position: relative}
+    .profileMenu summary{list-style: none; cursor: pointer}
+    .profileMenu summary::-webkit-details-marker{display:none}
+    .profile{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      padding: 4px 6px 4px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,.08);
+      background: #fff;
+      box-shadow: 0 6px 18px rgba(17,24,39,.08);
+    }
+    .profileText{display:flex; flex-direction:column; line-height:1.05; text-align:right}
+    .profileName{font-weight: 800; font-size: 12px; color: #111}
+    .profileRole{font-size: 11px; color: rgba(17,24,39,.55)}
+    .profileAvatar{
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      object-fit: cover;
+      border: 1px solid rgba(0,0,0,.10);
+      background: #f3f4f6;
+    }
+    .profileChevron{
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid rgba(17,24,39,.55);
+      margin-left: 2px;
+    }
+    .profileDropdown{
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      min-width: 180px;
+      background: #fff;
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 14px;
+      box-shadow: 0 18px 40px rgba(17,24,39,.16);
+      padding: 6px;
+      display: grid;
+      gap: 4px;
+      z-index: 20;
+    }
+    .profileDropdown a{
+      text-decoration: none;
+      color: #111;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
+    }
+    .profileDropdown a:hover{background: rgba(25,118,210,.08)}
+    a.btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,.12);
+      background: #fff;
+      color: rgba(17,24,39,.92);
+      text-decoration:none;
+      font-weight: 800;
+      font-size: 12px;
+      box-shadow: 0 6px 18px rgba(17,24,39,.10);
+      white-space:nowrap;
+    }
+    a.btn:hover{border-color: rgba(244,122,32,.45)}
+    a.btn.primary{border-color: rgba(25,118,210,.35)}
+
+    .page{max-width: 1200px; margin: 0 auto; padding: 22px 20px 46px}
+    .pageHead{margin-bottom: 14px}
+    .pageHead h1{margin:0; font-size: 22px; letter-spacing:.2px}
+    .pageHead p{margin:6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5}
+
+    main{max-width: 1200px; margin:0 auto; padding:0 20px 46px}
+    .card{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow: var(--shadow);
+    }
+    .hd{
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border-bottom: 1px solid rgba(0,0,0,.06);
+      background: linear-gradient(180deg, rgba(25,118,210,.06), rgba(25,118,210,.02));
+    }
+    .meta{
+      color:var(--muted);
+      font-size:12px;
+    }
+    .pill{
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid rgba(0,0,0,.10);
+      color: rgba(17,24,39,.72);
+      font-size:12px;
+      background: rgba(25,118,210,.06);
+      white-space:nowrap;
+      font-weight: 800;
+    }
+    .content{padding:14px 16px 16px}
+
+    table{width:100%; border-collapse: collapse; margin-top: 10px; overflow:hidden; border-radius: 14px}
+    th, td{padding: 10px 10px; border-bottom: 1px solid rgba(0,0,0,.06); text-align:left; font-size: 13px}
+    th{color: rgba(17,24,39,.70); font-size: 12px; text-transform: uppercase; letter-spacing:.1em; background: rgba(25,118,210,.06)}
+    tr:hover td{background: rgba(244,122,32,.06)}
+
+    .name{font-weight:750}
+    .badge{
+      display:inline-flex;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(22,163,74,.25);
+      background: rgba(22,163,74,.10);
+      color: rgba(22,163,74,.95);
+      font-size:12px;
+      font-weight:900;
+    }
+    .badge.blocked{
+      border-color: rgba(220,38,38,.35);
+      background: rgba(220,38,38,.12);
+      color: rgba(220,38,38,.95);
+    }
+    .reason{
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .empty{
+      padding:26px;
+      text-align:center;
+      color:var(--muted);
+    }
+
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    input{
+      border: 1px solid rgba(0,0,0,.12);
+      background: #fff;
+      color: rgba(17,24,39,.92);
+      border-radius:12px;
+      padding:10px 12px;
+    }
+    select{
+      border: 1px solid rgba(0,0,0,.12);
+      background: #fff;
+      color: rgba(17,24,39,.92);
+      border-radius:12px;
+      padding:10px 12px;
+      outline:none;
+    }
+    select option{background:#fff; color:rgba(17,24,39,.92)}
+    button{
+      cursor:pointer;
+      border: 1px solid rgba(0,0,0,.12);
+      background: #fff;
+      color: rgba(17,24,39,.92);
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:900;
+      font-size: 12px;
+      box-shadow: 0 10px 20px rgba(17,24,39,.10);
+    }
+    button:hover{border-color: rgba(244,122,32,.45)}
+    button:disabled{
+      cursor: not-allowed;
+      opacity: .65;
+      box-shadow: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">
+        <div class="brandLogo" aria-hidden="true"><img src="/static/ams-logo.png" alt="AMS" /></div>
+        <div class="brandText">
+          <div class="brandName"><span class="u">A</span><span class="ms">MS</span></div>
+          <div class="brandSub">ATTENDANCE MANAGEMENT SYSTEM</div>
+        </div>
+      </div>
+      <div class="right">
+        {% if user_role in ['faculty', 'trainer'] %}
+        <details class="profileMenu">
+          <summary class="profile">
+            <div class="profileText">
+              <div class="profileName">{{ user_name }}</div>
+              <div class="profileRole">{{ user_role|title }}</div>
+            </div>
+            <img class="profileAvatar" src="{{ user_photo }}" alt="Profile photo" />
+            <span class="profileChevron" aria-hidden="true"></span>
+          </summary>
+          <div class="profileDropdown" role="menu">
+            <a href="/change-password?role={{ user_role }}&profile={{ profile }}" role="menuitem">Change Password</a>
+            <a href="/logout?role={{ user_role }}&profile={{ profile }}" role="menuitem">Logout</a>
+          </div>
+        </details>
+        {% else %}
+        <a class="btn" href="/logout?role=admin">Logout</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="pageHead">
+      {% if section_id %}
+        <h1>Attendance · Section {{ section_id }}</h1>
+      {% else %}
+        <h1>Attendance</h1>
+      {% endif %}
+      <p>Attendance for <strong id="dayText">{{ day }}</strong> · <strong id="markedCount">{{ count }}</strong> marked</p>
+    </div>
+  </div>
+
+  <main>
+    <section class="card">
+      <div class="hd">
+        <div>
+          <div style="font-weight:700; font-size:14px; letter-spacing:.2px">Today’s List</div>
+          <div class="meta">Latest marks appear first</div>
+        </div>
+        <div class="row" style="justify-content:flex-end">
+          <label class="pill" style="display:flex; align-items:center; gap:8px; padding:6px 10px">
+            Filter:
+            <select id="statusFilter" aria-label="Filter attendance">
+              <option value="all">All</option>
+              <option value="present">Present</option>
+              <option value="absent">Absent</option>
+            </select>
+          </label>
+          <div class="pill">Showing: <span id="shownCount">{{ rows|length }}</span></div>
+          <div class="pill">Day: <span id="dayPill">{{ day }}</span></div>
+        </div>
+      </div>
+
+      {% if rows and rows|length > 0 %}
+      <div class="content">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:110px">Roll No</th>
+              <th style="width:110px">Regn No</th>
+              <th>Name</th>
+              <th style="width:170px">Marked At</th>
+              <th style="width:120px">Status</th>
+              <th>Blocked Reason</th>
+              <th style="width:140px">Action</th>
+            </tr>
+          </thead>
+          <tbody id="attTbody">
+            {% for r in rows %}
+            <tr>
+              <td>{{ r.roll_no or '-' }}</td>
+              <td>{{ r.person_id }}</td>
+              <td class="name">{{ r.name }}</td>
+              <td>{% if r.present %}{{ r.marked_time_ist or '-------' }}{% else %}-----{% endif %}</td>
+              <td>
+                {% if r.blocked %}
+                  <span class="badge blocked">Blocked</span>
+                {% elif r.present %}
+                  <span class="badge">Present</span>
+                {% else %}
+                  <span class="badge" style="border-color: rgba(217,119,6,.25); background: rgba(217,119,6,.10); color: rgba(217,119,6,.95);">Absent</span>
+                {% endif %}
+              </td>
+              <td class="reason">{{ r.block_reason or '-' }}</td>
+              <td>
+                {% if r.blocked %}
+                  <button type="button" disabled>Blocked</button>
+                {% else %}
+                  <form method="post" action="/attendance/set-status?profile={{ profile }}" style="margin:0">
+                    {% if r.attendance_id %}
+                      <input type="hidden" name="attendance_id" value="{{ r.attendance_id }}" />
+                    {% endif %}
+                    <input type="hidden" name="person_id" value="{{ r.person_id }}" />
+                    <input type="hidden" name="day" value="{{ day }}" />
+                    <input type="hidden" name="section_id" value="{{ section_id or '' }}" />
+                    {% if r.present %}
+                      <input type="hidden" name="status" value="unmarked" />
+                      <button type="submit" style="background: linear-gradient(180deg, rgba(239,68,68,.22), rgba(239,68,68,.08));">Unmark</button>
+                    {% else %}
+                      <input type="hidden" name="status" value="marked" />
+                      <button type="submit">Mark</button>
+                    {% endif %}
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        No students marked yet. Start Live Camera to mark attendance.
+      </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <script>
+    const attTbody = document.getElementById('attTbody');
+    const markedCount = document.getElementById('markedCount');
+    const dayText = document.getElementById('dayText');
+    const dayPill = document.getElementById('dayPill');
+    const statusFilter = document.getElementById('statusFilter');
+    const shownCount = document.getElementById('shownCount');
+
+    function getFilter(){
+      const stored = localStorage.getItem('attendance_status_filter') || 'all';
+      if (stored === 'present' || stored === 'absent' || stored === 'all') return stored;
+      return 'all';
+    }
+
+    function setFilter(value){
+      localStorage.setItem('attendance_status_filter', value);
+      if (statusFilter) statusFilter.value = value;
+    }
+
+    function esc(s){
+      return String(s ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+    }
+
+    function renderRows(rows, day, count){
+      if (dayText) dayText.textContent = day;
+      if (dayPill) dayPill.textContent = day;
+      if (markedCount) markedCount.textContent = String(count ?? 0);
+
+      if (!attTbody) return;
+      attTbody.innerHTML = '';
+
+      const rawList = Array.isArray(rows) ? rows : [];
+      const mode = getFilter();
+      const list = rawList.filter(r => {
+        const present = !!r.present;
+        if (mode === 'present') return present;
+        if (mode === 'absent') return !present;
+        return true;
+      });
+
+      if (shownCount) shownCount.textContent = String(list.length);
+
+      if (list.length === 0){
+        attTbody.innerHTML = `<tr><td colspan="7" style="padding:18px 10px; color: rgba(17,24,39,.72); background: rgba(17,24,39,.03); border:1px solid rgba(0,0,0,.08); border-radius:14px">No students in this filter.</td></tr>`;
+        return;
+      }
+
+      for (const r of list){
+        const tr = document.createElement('tr');
+        const present = !!r.present;
+        const blocked = !!r.blocked;
+        const timeCell = present ? (r.marked_time_ist || '-----') : '-----';
+        const badge = blocked
+          ? '<span class="badge blocked">Blocked</span>'
+          : (present
+            ? '<span class="badge">Present</span>'
+            : '<span class="badge" style="border-color: rgba(217,119,6,.25); background: rgba(217,119,6,.10); color: rgba(217,119,6,.95);">Absent</span>'
+          );
+        const reason = esc(r.block_reason || '-');
+
+        const hiddenAttendance = r.attendance_id ? `<input type="hidden" name="attendance_id" value="${esc(r.attendance_id)}" />` : '';
+        const action = blocked
+          ? '<button type="button" disabled>Blocked</button>'
+          : (present
+            ? `<input type="hidden" name="status" value="unmarked" />\
+               <button type="submit" style="background: linear-gradient(180deg, rgba(239,68,68,.22), rgba(239,68,68,.08));">Unmark</button>`
+            : `<input type="hidden" name="status" value="marked" />\
+               <button type="submit">Mark</button>`
+          );
+
+        tr.innerHTML = `
+          <td>${esc(r.roll_no || '-')}</td>
+          <td>${esc(r.person_id)}</td>
+          <td class="name">${esc(r.name)}</td>
+          <td>${esc(timeCell)}</td>
+          <td>${badge}</td>
+          <td class="reason">${reason}</td>
+          <td>
+            <form method="post" action="/attendance/set-status?profile=${encodeURIComponent(profile)}" style="margin:0">
+              ${hiddenAttendance}
+              <input type="hidden" name="person_id" value="${esc(r.person_id)}" />
+              <input type="hidden" name="day" value="${esc(day)}" />
+              <input type="hidden" name="section_id" value="${esc(sectionId)}" />
+              ${action}
+            </form>
+          </td>
+        `;
+        attTbody.appendChild(tr);
+      }
+    }
+
+    function getSelectedDay(){
+      const url = new URL(window.location.href);
+      return url.searchParams.get('day') || '';
+    }
+
+    const profile = "{{ profile }}";
+    const sectionId = "{{ section_id or '' }}";
+
+    async function poll(){
+      try{
+        const day = getSelectedDay();
+        const base = '/attendance/api';
+        const qs = [];
+        if (day) qs.push(`day=${encodeURIComponent(day)}`);
+        if (profile) qs.push(`profile=${encodeURIComponent(profile)}`);
+        if (sectionId) qs.push(`section_id=${encodeURIComponent(sectionId)}`);
+        const url = qs.length ? `${base}?${qs.join('&')}` : base;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderRows(data.rows, data.day, data.count);
+      } catch (e){
+        // ignore offline errors
+      }
+    }
+
+    // Auto-update attendance list
+    poll();
+    setInterval(poll, 3000);
+
+    // Init + react to filter changes
+    if (statusFilter){
+      statusFilter.value = getFilter();
+      statusFilter.addEventListener('change', () => {
+        setFilter(statusFilter.value);
+        poll();
+      });
+    }
+
+    // NOTE: Marked time is a fixed timestamp from the server (does not tick).
+  </script>
+
+  <script>
+    const role = "{{ user_role }}";
+    const profile = "{{ profile }}";
+    if (role === 'faculty' || role === 'trainer') {
+      setInterval(async () => {
+        try {
+          const res = await fetch(`/auth/ping?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`, { cache: 'no-store' });
+          const data = await res.json();
+          if (!data.ok) {
+            window.location.href = `/logout?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`;
+          }
+        } catch (_) {
+          // ignore
+        }
+      }, 8000);
+    }
+  </script>
+</body>
+</html>
