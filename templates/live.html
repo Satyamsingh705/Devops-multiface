@@ -472,7 +472,7 @@
     setPill('marking…');
 
     // Downscale for speed
-    const targetW = 960;
+    const targetW = 720;
     const scale = Math.min(1, targetW / w);
     const cw = Math.round(w * scale);
     const ch = Math.round(h * scale);
@@ -482,7 +482,7 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, cw, ch);
 
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.72));
     if (!blob){
       busy = false;
       setPill('idle');
@@ -531,13 +531,13 @@
         audio: false
       });
       video.srcObject = stream;
-      statusEl.textContent = 'Camera started. Marking will run every ~900ms.';
+      statusEl.textContent = 'Camera started. Marking will run every ~1200ms.';
       setPill('live');
       startBtn.disabled = true;
       stopBtn.disabled = false;
       toggleBtn.disabled = false;
 
-      timer = setInterval(markFrame, 900);
+      timer = setInterval(markFrame, 1200);
     } catch (e){
       statusEl.textContent = 'Camera permission denied or unavailable.';
       setPill('blocked');
@@ -583,14 +583,14 @@
 
 <script>
   const role = "{{ user_role }}";
-  const profile = "{{ profile }}";
+  const profilePing = "{{ profile }}";
   if (role === 'faculty' || role === 'trainer') {
     setInterval(async () => {
       try {
-        const res = await fetch(`/auth/ping?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`, { cache: 'no-store' });
+        const res = await fetch(`/auth/ping?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profilePing)}`, { cache: 'no-store' });
         const data = await res.json();
         if (!data.ok) {
-          window.location.href = `/logout?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`;
+          window.location.href = `/logout?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profilePing)}`;
         }
       } catch (_) {
         // ignore

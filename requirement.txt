@@ -8,3 +8,4 @@ jinja2
 onnxruntime
 python-multipart
 itsdangerous
+prometheus-fastapi-instrumentator

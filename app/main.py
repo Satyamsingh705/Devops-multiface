@@ -21,12 +21,15 @@ import hmac
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from itsdangerous import URLSafeSerializer, BadSignature
+from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
 )
+
+Instrumentator(excluded_handlers=["/metrics"]).instrument(app).expose(app, include_in_schema=False)
 
 # Static assets (logo, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")

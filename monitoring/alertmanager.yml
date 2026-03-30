@@ -1,0 +1,19 @@
+global:
+  smtp_smarthost: smtp.gmail.com:587
+  smtp_from: satyamkumarsingh705071@gmail.com
+  smtp_auth_username: satyamkumarsingh705071@gmail.com
+  smtp_auth_password: xuevxovymeqcmkkv
+  smtp_require_tls: true
+
+route:
+  receiver: email-notifications
+  group_by: ["alertname"]
+  group_wait: 15s
+  group_interval: 1m
+  repeat_interval: 30m
+
+receivers:
+  - name: email-notifications
+    email_configs:
+      - to: satyamkumarsingh705071@gmail.com
+        send_resolved: true

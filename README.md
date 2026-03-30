@@ -90,3 +90,170 @@ Other planned upgrades:
 
 Pull requests and feature suggestions are always welcome!
 If you find this project useful, consider ⭐ starring the repo and sharing it with others.
+
+## Docker Deployment with Prometheus + Grafana
+
+This repo now includes a Docker-based monitoring stack:
+
+- FastAPI app on port `8010`
+- Prometheus on port `9100`
+- Grafana on port `3100`
+- cAdvisor on port `18080` (container CPU/memory metrics)
+
+Before running, make sure Docker Desktop (daemon) is started.
+
+### 1) Start the full stack
+
+```bash
+docker compose up -d --build
+```
+
+### 2) Open services
+
+- App: `http://localhost:8000/login`
+- App: `http://localhost:8010/login`
+- App metrics: `http://localhost:8010/metrics`
+- Prometheus: `http://localhost:9100`
+- Grafana: `http://localhost:3100`
+
+Grafana login:
+
+- Username: `admin`
+- Password: `admin123`
+
+### 3) Add Prometheus as Grafana data source
+
+In Grafana:
+
+1. Go to **Connections** -> **Data sources**.
+2. Add **Prometheus**.
+3. Set URL to `http://prometheus:9090`.
+4. Click **Save & test**.
+
+### 4) Useful PromQL queries for dashboards
+
+Request rate:
+
+```promql
+sum(rate(http_requests_total[1m]))
+```
+
+P95 latency:
+
+```promql
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+```
+
+5xx error rate:
+
+```promql
+sum(rate(http_requests_total{status=~"5.."}[5m]))
+```
+
+Container CPU (app):
+
+```promql
+sum(rate(container_cpu_usage_seconds_total{name=~".*ams_app.*"}[1m]))
+```
+
+Container memory (app):
+
+```promql
+sum(container_memory_usage_bytes{name=~".*ams_app.*"})
+```
+
+### 5) Stop stack
+
+```bash
+docker compose down
+```
+
+### Performance Notes (Docker)
+
+- The first app startup can be slow because InsightFace models are downloaded once.
+- Model cache is persisted in Docker volume `insightface_cache`, so next restarts are faster.
+- Live camera frames are compressed/downscaled for lower inference latency.
+
+If you need faster response on CPU-only machines, keep:
+
+- `FACEAPP_DET_SIZE=512` (or reduce to `448`)
+- lower camera frame upload width / interval (already tuned in `live.html`)
+
+### Data Persistence (Important)
+
+Student data and attendance are stored in SQLite. In Docker, persistence is now configured with named volumes:
+
+- `app_data` -> `/app/data` (database file)
+- `app_uploads` -> `/app/static/uploads` (uploaded photos)
+
+Use normal stop/start commands to keep data:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+Do **not** use `-v` unless you intentionally want to erase data:
+
+```bash
+docker compose down -v
+```
+
+## CPU Alert Email Notifications (Prometheus + Alertmanager)
+
+This setup sends an email when AMS app CPU usage stays above 50 percent for 2 minutes.
+
+### 1) Configure Gmail SMTP credentials
+
+Copy `.env.example` to `.env` and update password:
+
+```bash
+cp .env.example .env
+```
+
+Set:
+
+- `ALERT_SMTP_FROM`
+- `ALERT_SMTP_USERNAME`
+- `ALERT_SMTP_PASSWORD` (Gmail App Password)
+
+### 2) Start/restart stack
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
+### 3) Verify alert components
+
+- Prometheus: `http://localhost:9100`
+- Alertmanager: `http://localhost:9300`
+
+In Prometheus:
+
+1. Go to **Status** -> **Targets** and verify all targets are up.
+2. Go to **Alerts** and check alert `AppHighCpuUsage`.
+
+### 4) Alert rule details
+
+Rule file: `monitoring/alert-rules.yml`
+
+- Alert: `AppHighCpuUsage`
+- Condition: app CPU > 50 percent
+- Duration: 2 minutes
+- Receiver email: `satyamkumarsingh705071@gmail.com`
+
+### 5) Quick test by generating CPU load
+
+```bash
+docker exec -it ams_app sh -c "python - <<'PY'
+import time
+x = 0
+for _ in range(40_000_000):
+       x += 1
+time.sleep(150)
+print(x)
+PY"
+```
+
+After about 2 minutes, you should receive an alert email.
