@@ -446,14 +446,14 @@
 
   <script>
     const role = "{{ user_role }}";
-    const profile = "{{ profile }}";
+    const profilePing = "{{ profile }}";
     if (role === 'faculty' || role === 'trainer') {
       setInterval(async () => {
         try {
-          const res = await fetch(`/auth/ping?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`, { cache: 'no-store' });
+          const res = await fetch(`/auth/ping?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profilePing)}`, { cache: 'no-store' });
           const data = await res.json();
           if (!data.ok) {
-            window.location.href = `/logout?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`;
+            window.location.href = `/logout?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profilePing)}`;
           }
         } catch (_) {
           // ignore

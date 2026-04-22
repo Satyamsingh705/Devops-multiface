@@ -381,9 +381,14 @@
   const dayEl = document.getElementById('day');
 
   let stream = null;
-  let timer = null;
+  let loopTimer = null;
   let paused = false;
   let busy = false;
+
+  // Tuned for snappier live marking on Kubernetes while keeping CPU reasonable.
+  const MARK_INTERVAL_MS = 250;
+  const TARGET_FRAME_WIDTH = 416;
+  const FRAME_JPEG_QUALITY = 0.60;
 
   function setPill(text){
     pill.textContent = text;
@@ -472,8 +477,7 @@
     setPill('marking…');
 
     // Downscale for speed
-    const targetW = 720;
-    const scale = Math.min(1, targetW / w);
+    const scale = Math.min(1, TARGET_FRAME_WIDTH / w);
     const cw = Math.round(w * scale);
     const ch = Math.round(h * scale);
 
@@ -482,7 +486,7 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, cw, ch);
 
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.72));
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', FRAME_JPEG_QUALITY));
     if (!blob){
       busy = false;
       setPill('idle');
@@ -524,20 +528,29 @@
     }
   }
 
+  function scheduleMarkLoop(delay = MARK_INTERVAL_MS){
+    if (!stream) return;
+    if (loopTimer) clearTimeout(loopTimer);
+    loopTimer = setTimeout(async () => {
+      await markFrame();
+      scheduleMarkLoop(MARK_INTERVAL_MS);
+    }, delay);
+  }
+
   async function start(){
     try{
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 540 } },
         audio: false
       });
       video.srcObject = stream;
-      statusEl.textContent = 'Camera started. Marking will run every ~1200ms.';
+      statusEl.textContent = `Camera started. Marking runs about every ~${MARK_INTERVAL_MS}ms.`;
       setPill('live');
       startBtn.disabled = true;
       stopBtn.disabled = false;
       toggleBtn.disabled = false;
 
-      timer = setInterval(markFrame, 1200);
+      scheduleMarkLoop(0);
     } catch (e){
       statusEl.textContent = 'Camera permission denied or unavailable.';
       setPill('blocked');
@@ -545,8 +558,8 @@
   }
 
   function stop(){
-    if (timer) clearInterval(timer);
-    timer = null;
+    if (loopTimer) clearTimeout(loopTimer);
+    loopTimer = null;
 
     if (stream){
       stream.getTracks().forEach(t => t.stop());
@@ -574,6 +587,9 @@
     paused = !paused;
     toggleBtn.textContent = paused ? 'Resume Marking' : 'Pause Marking';
     setPill(paused ? 'paused' : 'live');
+    if (!paused && stream && !loopTimer){
+      scheduleMarkLoop(0);
+    }
   }
 
   startBtn.addEventListener('click', start);

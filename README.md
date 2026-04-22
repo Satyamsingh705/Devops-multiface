@@ -257,3 +257,57 @@ PY"
 ```
 
 After about 2 minutes, you should receive an alert email.
+
+## Kubernetes Deployment (Namespace + ConfigMap + Secret + HPA)
+
+The file `pod.yaml` now contains:
+
+- Namespace: `faceapp`
+- ConfigMap: `faceapp-config`
+- Secret: `faceapp-secret`
+- PVCs for SQLite data, uploads, and InsightFace model cache
+- Deployment + Service for FastAPI app
+- HorizontalPodAutoscaler (HPA) on CPU
+
+### 1) Build app image
+
+```bash
+docker build -t faceapp:latest .
+```
+
+If using Minikube, load image into Minikube:
+
+```bash
+minikube image load faceapp:latest
+```
+
+### 2) Apply Kubernetes resources
+
+```bash
+kubectl apply -f pod.yaml
+```
+
+### 3) Verify resources
+
+```bash
+kubectl get all -n faceapp
+kubectl get pvc -n faceapp
+kubectl get hpa -n faceapp
+```
+
+### 4) Open app locally via port-forward
+
+```bash
+kubectl port-forward -n faceapp svc/faceapp 8010:8000
+```
+
+Open:
+
+- `http://localhost:8010/login`
+- `http://localhost:8010/metrics`
+
+### 5) Notes
+
+- Update secret values in `pod.yaml` before production use.
+- HPA requires Kubernetes metrics-server. If `kubectl top pods -n faceapp` fails, install metrics-server first.
+- This app uses SQLite. Running multiple replicas can cause DB lock/contention. Keep `maxReplicas: 1` or move to PostgreSQL/MySQL for true horizontal scaling.

@@ -18,6 +18,7 @@ import string
 import base64
 import hashlib
 import hmac
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from itsdangerous import URLSafeSerializer, BadSignature
@@ -314,6 +315,63 @@ def _template_response_compat(*args, **kwargs):
 templates.TemplateResponse = _template_response_compat
 encoder = FaceEncoder()
 
+EMBED_CACHE_TTL_SECONDS = max(0, int(os.getenv("FACEAPP_EMBED_CACHE_TTL_SECONDS", "15")))
+_embeddings_cache = {
+    "loaded_at": 0.0,
+    "embeddings": np.empty((0,)),
+    "people": [],
+    "idx_by_id": {},
+}
+
+
+def _invalidate_embeddings_cache() -> None:
+    _embeddings_cache["loaded_at"] = 0.0
+    _embeddings_cache["embeddings"] = np.empty((0,))
+    _embeddings_cache["people"] = []
+    _embeddings_cache["idx_by_id"] = {}
+
+
+def _refresh_embeddings_cache(db: Session) -> None:
+    persons = db.query(Person).all()
+    if not persons:
+        _invalidate_embeddings_cache()
+        _embeddings_cache["loaded_at"] = time.monotonic()
+        return
+
+    embeddings = []
+    people = []
+    for p in persons:
+        emb = pickle.loads(p.embedding)
+        emb = encoder.l2_normalize(np.array(emb))
+        embeddings.append(emb)
+        people.append(
+            {
+                "id": int(p.id),
+                "name": p.name,
+                "roll_no": p.roll_no,
+                "is_blocked": bool(p.is_blocked),
+                "blocked_reason": p.blocked_reason,
+            }
+        )
+
+    _embeddings_cache["embeddings"] = np.vstack(embeddings)
+    _embeddings_cache["people"] = people
+    _embeddings_cache["idx_by_id"] = {int(row["id"]): idx for idx, row in enumerate(people)}
+    _embeddings_cache["loaded_at"] = time.monotonic()
+
+
+def _get_all_known_embeddings(db: Session):
+    cache_age = time.monotonic() - float(_embeddings_cache["loaded_at"])
+    cache_miss = float(_embeddings_cache["loaded_at"]) == 0.0
+    expired = EMBED_CACHE_TTL_SECONDS == 0 or cache_age > EMBED_CACHE_TTL_SECONDS
+    if cache_miss or expired:
+        _refresh_embeddings_cache(db)
+    return (
+        _embeddings_cache["embeddings"],
+        _embeddings_cache["people"],
+        _embeddings_cache["idx_by_id"],
+    )
+
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -378,30 +436,21 @@ def _profile_context(request: Request, role: str | None = None, profile: str | N
 
 
 def _load_known_embeddings(db: Session, allowed_ids: set[int] | None = None):
-    if allowed_ids:
-        persons = db.query(Person).filter(Person.id.in_(list(allowed_ids))).all()
-    else:
-        persons = db.query(Person).all()
-    if not persons:
+    embeddings, people, idx_by_id = _get_all_known_embeddings(db)
+    if embeddings.size == 0:
         return np.empty((0,)), []
 
-    embeddings = []
-    people = []
-    for p in persons:
-        emb = pickle.loads(p.embedding)
-        emb = encoder.l2_normalize(np.array(emb))
-        embeddings.append(emb)
-        people.append(
-            {
-                "id": p.id,
-                "name": p.name,
-                "roll_no": p.roll_no,
-                "is_blocked": bool(p.is_blocked),
-                "blocked_reason": p.blocked_reason,
-            }
-        )
+    if allowed_ids is None:
+        return embeddings, people
 
-    return np.vstack(embeddings), people
+    allowed = [int(pid) for pid in allowed_ids if int(pid) in idx_by_id]
+    if not allowed:
+        return np.empty((0,)), []
+
+    selected_idx = [int(idx_by_id[pid]) for pid in allowed]
+    selected_embeddings = embeddings[selected_idx]
+    selected_people = [people[i] for i in selected_idx]
+    return selected_embeddings, selected_people
 
 
 def _check_duplicate_person(db: Session, person_id: int, roll_no: str) -> str | None:
@@ -808,6 +857,7 @@ async def security_block_student(person_id: int = Form(...), reason: str = Form(
     ).update({Attendance.status: "unmarked"})
     db.commit()
     db.close()
+    _invalidate_embeddings_cache()
     return RedirectResponse(url="/security/students?msg=Student+blocked", status_code=303)
 
 
@@ -823,6 +873,7 @@ async def security_unblock_student(person_id: int = Form(...)):
     person.blocked_reason = None
     db.commit()
     db.close()
+    _invalidate_embeddings_cache()
     return RedirectResponse(url="/security/students?msg=Student+unblocked", status_code=303)
 
 
@@ -950,6 +1001,7 @@ async def admin_add_student(
     db.add(person)
     db.commit()
     db.close()
+    _invalidate_embeddings_cache()
     return RedirectResponse(url="/admin", status_code=303)
 
 
@@ -962,6 +1014,7 @@ async def admin_delete_student(person_id: int = Form(...)):
     db.query(Person).filter(Person.id == person_id).delete()
     db.commit()
     db.close()
+    _invalidate_embeddings_cache()
     return RedirectResponse(url="/admin", status_code=303)
 
 
@@ -1288,6 +1341,7 @@ async def train_person(
     db.add(person)
     db.commit()
     db.close()
+    _invalidate_embeddings_cache()
 
     return {"message": f"✅ {name} (ID={person_id}) trained successfully!"}
 
@@ -1317,7 +1371,7 @@ async def recognize_faces(file: UploadFile = File(...)):
 
     # Detect faces in the uploaded image
     faces = encoder.app.get(img)
-    threshold_cos = 0.4  # tweak for sensitivity
+    threshold_cos = 0.8  # tweak for sensitivity
 
     for face in faces:
         emb = encoder.l2_normalize(face.embedding)
@@ -1356,7 +1410,7 @@ async def recognize_live_frame(file: UploadFile = File(...)):
     db.close()
 
     faces = encoder.app.get(img)
-    threshold_cos = 0.4
+    threshold_cos = 0.8
 
     in_frame: list[dict] = []
     unknown_count = 0
@@ -1429,19 +1483,16 @@ async def mark_attendance(
     faces = encoder.app.get(img)
 
     threshold_cos = 0.4
-    newly_marked: list[dict] = []
-    already_marked: list[dict] = []
-    blocked_marked: list[dict] = []
     unknown_count = 0
-    in_frame_person_ids: set[int] = set()
+    best_matches: dict[int, dict] = {}
+    blocked_matches: dict[int, dict] = {}
 
     for face in faces:
-        emb = encoder.l2_normalize(face.embedding)
-
         if known_embeddings.size == 0:
             unknown_count += 1
             continue
 
+        emb = encoder.l2_normalize(face.embedding)
         cos_sim = np.dot(known_embeddings, emb)
         idx = int(np.argmax(cos_sim))
         max_sim = float(cos_sim[idx])
@@ -1455,87 +1506,131 @@ async def mark_attendance(
         roll_no = known[idx].get("roll_no")
         blocked = bool(known[idx].get("is_blocked"))
         if blocked:
-            blocked_marked.append(
-                {
-                    "person_id": person_id,
-                    "roll_no": roll_no,
-                    "name": name,
-                    "reason": known[idx].get("blocked_reason"),
-                    "similarity": max_sim,
-                }
-            )
+            blocked_row = {
+                "person_id": person_id,
+                "roll_no": roll_no,
+                "name": name,
+                "reason": known[idx].get("blocked_reason"),
+                "similarity": max_sim,
+            }
+            prev = blocked_matches.get(person_id)
+            if prev is None or max_sim > float(prev.get("similarity", 0.0)):
+                blocked_matches[person_id] = blocked_row
             continue
-        existing = (
-            db.query(Attendance)
-            .filter(Attendance.person_id == person_id, Attendance.day == day)
-            .first()
-        )
 
+        prev = best_matches.get(person_id)
+        if prev is None or max_sim > float(prev.get("similarity", 0.0)):
+            best_matches[person_id] = {
+                "person_id": person_id,
+                "roll_no": roll_no,
+                "name": name,
+                "similarity": max_sim,
+            }
+
+    matched_person_ids = list(best_matches.keys())
+    existing_rows_by_person: dict[int, Attendance] = {}
+    if matched_person_ids:
+        existing_rows = (
+            db.query(Attendance)
+            .filter(Attendance.day == day, Attendance.person_id.in_(matched_person_ids))
+            .all()
+        )
+        existing_rows_by_person = {int(r.person_id): r for r in existing_rows}
+
+    inserted_rows: list[tuple[Attendance, dict]] = []
+    already_marked: list[dict] = []
+    newly_marked: list[dict] = []
+    in_frame_rows: list[Attendance] = []
+
+    now_utc = datetime.utcnow()
+    for person_id in matched_person_ids:
+        match = best_matches[person_id]
+        existing = existing_rows_by_person.get(person_id)
         if existing:
-            in_frame_person_ids.add(person_id)
             if existing.status != "marked":
                 existing.status = "marked"
-                existing.marked_at = datetime.utcnow()
-                existing.roll_no = roll_no
-                existing.name = name
-                db.commit()
+                existing.marked_at = now_utc
+                existing.roll_no = match.get("roll_no")
+                existing.name = match.get("name")
             already_marked.append(
                 {
                     "person_id": person_id,
-                    "roll_no": roll_no,
-                    "name": name,
+                    "roll_no": match.get("roll_no"),
+                    "name": match.get("name"),
                     "marked_at": existing.marked_at.isoformat() if existing.marked_at else None,
-                    "similarity": max_sim,
+                    "similarity": match.get("similarity"),
                     "status": existing.status,
                 }
             )
+            in_frame_rows.append(existing)
             continue
 
-        row = Attendance(person_id=person_id, roll_no=roll_no, name=name, day=day, status="marked")
+        row = Attendance(
+            person_id=person_id,
+            roll_no=match.get("roll_no"),
+            name=match.get("name"),
+            day=day,
+            status="marked",
+        )
         db.add(row)
+        inserted_rows.append((row, match))
+        in_frame_rows.append(row)
+
+    if inserted_rows:
         try:
-            db.commit()
+            db.flush()
         except Exception:
             db.rollback()
-            existing = (
+            refreshed_rows = (
                 db.query(Attendance)
-                .filter(Attendance.person_id == person_id, Attendance.day == day)
-                .first()
+                .filter(Attendance.day == day, Attendance.person_id.in_(matched_person_ids))
+                .all()
             )
-            already_marked.append(
-                {
-                    "person_id": person_id,
-                    "roll_no": roll_no,
-                    "name": name,
-                    "marked_at": existing.marked_at.isoformat() if existing and existing.marked_at else None,
-                    "similarity": max_sim,
-                    "status": existing.status if existing else None,
-                }
-            )
+            in_frame_rows = refreshed_rows
+            already_marked = []
+            newly_marked = []
+            refreshed_by_person = {int(r.person_id): r for r in refreshed_rows}
+            for person_id in matched_person_ids:
+                row = refreshed_by_person.get(person_id)
+                if not row:
+                    continue
+                match = best_matches[person_id]
+                already_marked.append(
+                    {
+                        "person_id": person_id,
+                        "roll_no": match.get("roll_no"),
+                        "name": match.get("name"),
+                        "marked_at": row.marked_at.isoformat() if row.marked_at else None,
+                        "similarity": match.get("similarity"),
+                        "status": row.status,
+                    }
+                )
         else:
-            db.refresh(row)
-            in_frame_person_ids.add(person_id)
-            newly_marked.append(
-                {
-                    "person_id": person_id,
-                    "roll_no": roll_no,
-                    "name": name,
-                    "marked_at": row.marked_at.isoformat() if row.marked_at else None,
-                    "marked_at_ist": _iso_ist(row.marked_at),
-                    "similarity": max_sim,
-                    "status": row.status,
-                }
-            )
+            for row, match in inserted_rows:
+                newly_marked.append(
+                    {
+                        "person_id": int(row.person_id),
+                        "roll_no": row.roll_no,
+                        "name": row.name,
+                        "marked_at": row.marked_at.isoformat() if row.marked_at else None,
+                        "marked_at_ist": _iso_ist(row.marked_at),
+                        "similarity": match.get("similarity"),
+                        "status": row.status,
+                    }
+                )
 
-    # Return only the people seen in THIS frame for the live UI
-    in_frame_rows = []
-    if in_frame_person_ids:
-        in_frame_rows = (
-            db.query(Attendance)
-            .filter(Attendance.day == day, Attendance.person_id.in_(list(in_frame_person_ids)))
-            .order_by(Attendance.marked_at.desc())
-            .all()
-        )
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    blocked_marked = list(blocked_matches.values())
+    blocked_marked.sort(key=lambda r: float(r.get("similarity", 0.0)), reverse=True)
+    in_frame_rows.sort(
+        key=lambda r: r.marked_at if r.marked_at is not None else datetime.min,
+        reverse=True,
+    )
+
     db.close()
 
     return {

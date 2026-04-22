@@ -464,7 +464,7 @@
       statusText.textContent = text;
     }
 
-    function updateUi() {
+    function updateUi(preserveStatus = false) {
       const count = captured.length;
       captureCount.textContent = `Images: ${count}/5`;
       clearBtn.disabled = count === 0;
@@ -506,9 +506,11 @@
         thumbs.appendChild(slot);
       }
 
-      if (count === 0) setStatus('', 'Ready. Capture 3–5 photos.');
-      else if (count < 3) setStatus('warn', `Captured ${count}/5. Need at least 3 photos to train.`);
-      else setStatus('', `Captured ${count}/5. Ready to train.`);
+      if (!preserveStatus) {
+        if (count === 0) setStatus('', 'Ready. Capture 3–5 photos.');
+        else if (count < 3) setStatus('warn', `Captured ${count}/5. Need at least 3 photos to train.`);
+        else setStatus('', `Captured ${count}/5. Ready to train.`);
+      }
     }
 
     async function startCamera() {
@@ -646,7 +648,8 @@
       } catch (err) {
         setStatus('bad', 'Error: ' + err.message);
       } finally {
-        updateUi();
+        // Keep final success/error message visible after training completes.
+        updateUi(true);
       }
     });
 
@@ -656,14 +659,14 @@
 
   <script>
     const role = "{{ user_role }}";
-    const profile = "{{ profile }}";
+    const profilePing = "{{ profile }}";
     if (role === 'faculty' || role === 'trainer') {
       setInterval(async () => {
         try {
-          const res = await fetch(`/auth/ping?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`, { cache: 'no-store' });
+          const res = await fetch(`/auth/ping?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profilePing)}`, { cache: 'no-store' });
           const data = await res.json();
           if (!data.ok) {
-            window.location.href = `/logout?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profile)}`;
+            window.location.href = `/logout?role=${encodeURIComponent(role)}&profile=${encodeURIComponent(profilePing)}`;
           }
         } catch (_) {
           // ignore
