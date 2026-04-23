@@ -54,6 +54,8 @@ class Attendance(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     person_id = Column(Integer, index=True, nullable=False)
+    # 0 means global/non-section scope (admin flow).
+    section_id = Column(Integer, index=True, nullable=False, default=0)
     roll_no = Column(String, index=True, nullable=True)
     name = Column(String, index=True, nullable=False)
     day = Column(String, index=True, nullable=False)  # YYYY-MM-DD (local)
@@ -61,6 +63,7 @@ class Attendance(Base):
     status = Column(String, index=True, nullable=False, default="marked")  # marked | unmarked
 
     __table_args__ = (
-        UniqueConstraint("person_id", "day", name="uq_attendance_person_day"),
+        UniqueConstraint("person_id", "day", "section_id", name="uq_attendance_person_day_section"),
         Index("ix_attendance_day_marked_at", "day", "marked_at"),
+        Index("ix_attendance_section_day_marked_at", "section_id", "day", "marked_at"),
     )

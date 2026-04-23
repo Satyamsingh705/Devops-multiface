@@ -90,7 +90,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: app
-          # Replace with your pushed image if cluster cannot access local Docker images.
+          # Local default image. CI/CD updates this with `kubectl set image` during deploy.
           image: faceapp:latest
           imagePullPolicy: IfNotPresent
           ports:

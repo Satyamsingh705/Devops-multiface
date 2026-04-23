@@ -12,7 +12,7 @@ services:
       - OMP_NUM_THREADS=2
       - OPENBLAS_NUM_THREADS=2
     ports:
-      - "8010:8000"
+      - "53732:8000"
     volumes:
       - app_data:/app/data
       - app_uploads:/app/static/uploads
@@ -25,7 +25,7 @@ services:
     container_name: ams_prometheus
     restart: unless-stopped
     ports:
-      - "9100:9090"
+      - "53746:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
@@ -43,7 +43,7 @@ services:
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
     ports:
-      - "9300:9093"
+      - "53761:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     networks:
@@ -54,12 +54,13 @@ services:
     container_name: ams_grafana
     restart: unless-stopped
     ports:
-      - "3100:3000"
+      - "53753:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
     depends_on:
       - prometheus
     networks:

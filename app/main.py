@@ -274,12 +274,67 @@ def _ensure_sqlite_schema() -> None:
             if not has_column(conn, "persons", "blocked_reason"):
                 conn.execute(text("ALTER TABLE persons ADD COLUMN blocked_reason VARCHAR"))
 
-        # attendance.status + attendance.roll_no
+        # attendance.status + attendance.roll_no + attendance.section_id
         if conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance'")).fetchone():
             if not has_column(conn, "attendance", "status"):
                 conn.execute(text("ALTER TABLE attendance ADD COLUMN status VARCHAR DEFAULT 'marked'"))
             if not has_column(conn, "attendance", "roll_no"):
                 conn.execute(text("ALTER TABLE attendance ADD COLUMN roll_no VARCHAR"))
+            if not has_column(conn, "attendance", "section_id"):
+                # Rebuild attendance table to replace old unique(person_id, day)
+                # with unique(person_id, day, section_id).
+                conn.execute(text("ALTER TABLE attendance RENAME TO attendance_legacy"))
+                conn.execute(
+                    text(
+                        "CREATE TABLE attendance ("
+                        "id INTEGER NOT NULL PRIMARY KEY, "
+                        "person_id INTEGER NOT NULL, "
+                        "section_id INTEGER NOT NULL DEFAULT 0, "
+                        "roll_no VARCHAR, "
+                        "name VARCHAR NOT NULL, "
+                        "day VARCHAR NOT NULL, "
+                        "marked_at DATETIME NOT NULL, "
+                        "status VARCHAR NOT NULL DEFAULT 'marked', "
+                        "CONSTRAINT uq_attendance_person_day_section UNIQUE (person_id, day, section_id)"
+                        ")"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "INSERT INTO attendance (id, person_id, section_id, roll_no, name, day, marked_at, status) "
+                        "SELECT id, person_id, 0, roll_no, name, day, COALESCE(marked_at, CURRENT_TIMESTAMP), "
+                        "COALESCE(status, 'marked') FROM attendance_legacy"
+                    )
+                )
+                conn.execute(text("DROP TABLE attendance_legacy"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_person_id ON attendance(person_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_section_id ON attendance(section_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_roll_no ON attendance(roll_no)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_name ON attendance(name)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_day ON attendance(day)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_status ON attendance(status)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_day_marked_at ON attendance(day, marked_at)"))
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_attendance_section_day_marked_at "
+                        "ON attendance(section_id, day, marked_at)"
+                    )
+                )
+            else:
+                conn.execute(text("UPDATE attendance SET section_id = 0 WHERE section_id IS NULL"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_person_id ON attendance(person_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_section_id ON attendance(section_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_roll_no ON attendance(roll_no)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_name ON attendance(name)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_day ON attendance(day)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_status ON attendance(status)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_day_marked_at ON attendance(day, marked_at)"))
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_attendance_section_day_marked_at "
+                        "ON attendance(section_id, day, marked_at)"
+                    )
+                )
 
         conn.execute(
             text(
@@ -405,6 +460,35 @@ def _iso_ist(dt: datetime | None) -> str | None:
 def _today_key() -> str:
     # Store local day string to match user expectations (classroom attendance)
     return datetime.now().strftime("%Y-%m-%d")
+
+
+GLOBAL_ATTENDANCE_SECTION_ID = 0
+
+
+def _resolve_attendance_section_scope(role: str, section_id: int | None) -> int | None:
+    # Faculty attendance must always be section-specific.
+    if role == "faculty":
+        return int(section_id) if section_id is not None else None
+    if section_id is not None:
+        return int(section_id)
+    return GLOBAL_ATTENDANCE_SECTION_ID
+
+
+def _attendance_query_for_scope(db: Session, day: str, scope_section_id: int):
+    return db.query(Attendance).filter(
+        Attendance.day == day,
+        Attendance.section_id == int(scope_section_id),
+    )
+
+
+def _attendance_latest_by_person(rows: list[Attendance]) -> dict[int, Attendance]:
+    # rows are expected in descending marked_at order; keep the first row per person.
+    latest: dict[int, Attendance] = {}
+    for row in rows:
+        pid = int(row.person_id)
+        if pid not in latest:
+            latest[pid] = row
+    return latest
 
 
 def _profile_context(request: Request, role: str | None = None, profile: str | None = None) -> dict:
@@ -1167,6 +1251,11 @@ async def attendance_page(
 ):
     selected_day = day or _today_key()
     db: Session = SessionLocal()
+    scope_section_id = _resolve_attendance_section_scope(role, section_id)
+    if scope_section_id is None:
+        db.close()
+        return RedirectResponse(url=f"/faculty?profile={_profile_hint(request) or ''}", status_code=303)
+
     if role == "faculty":
         allowed_ids = _allowed_person_ids(db, request, role, section_id)
         if not allowed_ids:
@@ -1176,12 +1265,11 @@ async def attendance_page(
     people = sorted(people, key=lambda p: _roll_sort_key(p.roll_no))
 
     att_rows = (
-        db.query(Attendance)
-        .filter(Attendance.day == selected_day)
+        _attendance_query_for_scope(db, selected_day, scope_section_id)
         .order_by(Attendance.marked_at.desc())
         .all()
     )
-    att_by_person: dict[int, Attendance] = {int(a.person_id): a for a in att_rows}
+    att_by_person = _attendance_latest_by_person(att_rows)
 
     view_rows = []
     for p in people:
@@ -1229,6 +1317,11 @@ async def attendance_api(
 ):
     selected_day = day or _today_key()
     db: Session = SessionLocal()
+    scope_section_id = _resolve_attendance_section_scope(role, section_id)
+    if scope_section_id is None:
+        db.close()
+        return {"day": selected_day, "count": 0, "rows": []}
+
     if role == "faculty":
         allowed_ids = _allowed_person_ids(db, request, role, section_id)
         if not allowed_ids:
@@ -1238,12 +1331,11 @@ async def attendance_api(
     people = sorted(people, key=lambda p: _roll_sort_key(p.roll_no))
 
     att_rows = (
-        db.query(Attendance)
-        .filter(Attendance.day == selected_day)
+        _attendance_query_for_scope(db, selected_day, scope_section_id)
         .order_by(Attendance.marked_at.desc())
         .all()
     )
-    att_by_person: dict[int, Attendance] = {int(a.person_id): a for a in att_rows}
+    att_by_person = _attendance_latest_by_person(att_rows)
 
     view_rows = []
     for p in people:
@@ -1279,8 +1371,13 @@ async def attendance_today_api(
 ):
     day = _today_key()
     db: Session = SessionLocal()
+    scope_section_id = _resolve_attendance_section_scope(role, section_id)
+    if scope_section_id is None:
+        db.close()
+        return {"day": day, "count": 0, "marked": []}
+
     allowed_ids = _allowed_person_ids(db, request, role, section_id)
-    query = db.query(Attendance).filter(Attendance.day == day)
+    query = _attendance_query_for_scope(db, day, scope_section_id)
     if allowed_ids is not None:
         if not allowed_ids:
             db.close()
@@ -1410,7 +1507,7 @@ async def recognize_live_frame(file: UploadFile = File(...)):
     db.close()
 
     faces = encoder.app.get(img)
-    threshold_cos = 0.8
+    threshold_cos = 0.4
 
     in_frame: list[dict] = []
     unknown_count = 0
@@ -1466,6 +1563,7 @@ async def mark_attendance(
     db: Session = SessionLocal()
     section_id = request.query_params.get("section_id")
     section_id_val = int(section_id) if section_id and str(section_id).isdigit() else None
+    scope_section_id = _resolve_attendance_section_scope(role, section_id_val)
 
     contents = await file.read()
     npimg = np.frombuffer(contents, np.uint8)
@@ -1478,6 +1576,9 @@ async def mark_attendance(
     if allowed_ids is not None and not allowed_ids:
         db.close()
         return {"error": "No students assigned to this faculty"}
+    if scope_section_id is None:
+        db.close()
+        return {"error": "Section is required"}
 
     known_embeddings, known = _load_known_embeddings(db, allowed_ids)
     faces = encoder.app.get(img)
@@ -1532,7 +1633,11 @@ async def mark_attendance(
     if matched_person_ids:
         existing_rows = (
             db.query(Attendance)
-            .filter(Attendance.day == day, Attendance.person_id.in_(matched_person_ids))
+            .filter(
+                Attendance.day == day,
+                Attendance.section_id == scope_section_id,
+                Attendance.person_id.in_(matched_person_ids),
+            )
             .all()
         )
         existing_rows_by_person = {int(r.person_id): r for r in existing_rows}
@@ -1567,6 +1672,7 @@ async def mark_attendance(
 
         row = Attendance(
             person_id=person_id,
+            section_id=scope_section_id,
             roll_no=match.get("roll_no"),
             name=match.get("name"),
             day=day,
@@ -1583,7 +1689,11 @@ async def mark_attendance(
             db.rollback()
             refreshed_rows = (
                 db.query(Attendance)
-                .filter(Attendance.day == day, Attendance.person_id.in_(matched_person_ids))
+                .filter(
+                    Attendance.day == day,
+                    Attendance.section_id == scope_section_id,
+                    Attendance.person_id.in_(matched_person_ids),
+                )
                 .all()
             )
             in_frame_rows = refreshed_rows
@@ -1635,6 +1745,7 @@ async def mark_attendance(
 
     return {
         "day": day,
+        "section_id": scope_section_id,
         "faces_detected": len(faces),
         "newly_marked": newly_marked,
         "already_marked": already_marked,
@@ -1671,20 +1782,36 @@ async def attendance_set_status(
         return {"error": "Invalid status"}
 
     selected_day = day or _today_key()
+    scope_section_id = _resolve_attendance_section_scope(role, section_id)
     qs = [f"day={selected_day}"]
     if section_id is not None:
         qs.append(f"section_id={int(section_id)}")
     redirect_url = f"/attendance?{'&'.join(qs)}"
     db: Session = SessionLocal()
 
+    if scope_section_id is None:
+        db.close()
+        return RedirectResponse(url=redirect_url, status_code=303)
+
     row = None
     if attendance_id is not None:
-        row = db.query(Attendance).filter(Attendance.id == attendance_id).first()
+        row = (
+            db.query(Attendance)
+            .filter(
+                Attendance.id == attendance_id,
+                Attendance.section_id == scope_section_id,
+            )
+            .first()
+        )
 
     if row is None and person_id is not None:
         row = (
             db.query(Attendance)
-            .filter(Attendance.person_id == person_id, Attendance.day == selected_day)
+            .filter(
+                Attendance.person_id == person_id,
+                Attendance.day == selected_day,
+                Attendance.section_id == scope_section_id,
+            )
             .first()
         )
 
@@ -1713,6 +1840,7 @@ async def attendance_set_status(
 
         row = Attendance(
             person_id=person.id,
+            section_id=scope_section_id,
             roll_no=person.roll_no,
             name=person.name,
             day=selected_day,

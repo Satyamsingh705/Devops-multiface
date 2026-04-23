@@ -79,11 +79,11 @@ docker compose up -d --build
 
 Service URLs:
 
-- App UI: `http://localhost:8010/login`
-- App metrics: `http://localhost:8010/metrics`
-- Prometheus: `http://localhost:9100`
-- Grafana: `http://localhost:3100`
-- Alertmanager: `http://localhost:9300`
+- App UI: `http://localhost:53732/login`
+- App metrics: `http://localhost:53732/metrics`
+- Prometheus: `http://localhost:53746`
+- Grafana: `http://localhost:53753`
+- Alertmanager: `http://localhost:53761`
 - cAdvisor: `http://localhost:18080`
 
 Grafana default login:
@@ -95,7 +95,7 @@ Compose notes:
 
 - Persisted Docker volumes: `app_data`, `app_uploads`, `insightface_cache`, `grafana_data`
 - First startup may be slower because InsightFace model artifacts are downloaded
-- Current Compose Grafana does not auto-provision datasource; set Prometheus URL to `http://prometheus:9090` in Grafana if needed
+- Grafana now auto-provisions the default Prometheus datasource at `http://prometheus:9090`
 
 Stop stack:
 
@@ -166,6 +166,45 @@ Open:
 - Grafana: `http://127.0.0.1:53753`
 - Alertmanager: `http://127.0.0.1:53761`
 
+## GitHub Actions CI/CD (Automatic)
+
+This repository now includes an automated pipeline in `.github/workflows/ci-cd.yml`.
+
+Flow on every push to `main`:
+
+1. Build Docker image from `Dockerfile`
+2. Push image to Docker Hub
+3. Deploy to Kubernetes
+4. Update the `faceapp` deployment image
+5. Wait for rollout to complete
+
+### Required GitHub repository secrets
+
+Configure these in GitHub: **Repository -> Settings -> Secrets and variables -> Actions**.
+
+- `DOCKERHUB_USERNAME`: your Docker Hub username
+- `DOCKERHUB_TOKEN`: Docker Hub access token
+- `DOCKERHUB_REPOSITORY`: full image repo name, for example `satyamsingh705/devops-multiface`
+- `KUBE_CONFIG`: kubeconfig content for the target cluster
+
+Notes:
+
+- `KUBE_CONFIG` can be either raw kubeconfig text or base64-encoded kubeconfig.
+- The workflow applies `pod.yaml` first, then runs `kubectl set image` for `deployment/faceapp`.
+- Kubernetes namespace used by the pipeline is `faceapp`.
+- The deploy job must be able to reach your Kubernetes API server. For local-only Minikube, use a self-hosted GitHub runner on the same machine/network.
+
+### Trigger deployment manually
+
+You can run the same pipeline manually from GitHub Actions with `workflow_dispatch`.
+
+### Verify deployment after workflow run
+
+```bash
+kubectl get pods -n faceapp
+kubectl rollout status deployment/faceapp -n faceapp
+```
+
 ## Credentials and Defaults
 
 Current defaults in repository configuration:
@@ -211,6 +250,23 @@ Fix:
 
 - Use datasource URL `http://prometheus:9090`
 - In Kubernetes mode, this is now provisioned automatically via `grafana-provisioning` ConfigMap in `pod.yaml`
+
+### Grafana plugin unavailable / Prometheus datasource plugin error
+
+Possible causes:
+
+- Running `grafana/grafana:latest` across major upgrades with old persisted plugin state
+- Stale Grafana volume data from previous runs
+
+Fix:
+
+- This repo pins Grafana to a stable image and auto-provisions Prometheus datasource in Docker Compose
+- If plugin errors persist from older local state, run a one-time reset:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
 
 ### Port-forward dropped after rollout/restart
 
