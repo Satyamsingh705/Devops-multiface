@@ -9,3 +9,4 @@ onnxruntime
 python-multipart
 itsdangerous
 prometheus-fastapi-instrumentator
+psycopg2-binary
