@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AMS · Attendance Management System</title>
-  <link rel="icon" href="/static/ams-logo.png" />
+  <title>AI-Powered Face Recognition-Based Attendance Management System with Full-Stack Integration</title>
+  <link rel="icon" href="/static/ams-login-logo.png?v=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -51,8 +51,8 @@
     }
 
     .logoCircle{
-      width: 82px;
-      height: 82px;
+      width: 92px;
+      height: 92px;
       border-radius: 999px;
       background: #fbf1f1;
       border: 1px solid rgba(0,0,0,.10);
@@ -66,8 +66,8 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      object-position: 50% 58%;
-      transform: scale(1.32);
+      object-position: center;
+      transform: scale(1.08);
       display:block;
     }
 
@@ -88,47 +88,72 @@
       gap:22px;
       flex-wrap:wrap;
     }
-    .brand .ams{
-      font-weight: 900;
-      font-size: 30px;
-      letter-spacing: .3px;
-      line-height: 1;
-    }
-    .brand .ams .a{ color: var(--orange); }
-    .brand .ams .ms{ color: #111; }
-
-    .brand .tagline{
+    .brandText{
       display:flex;
-      flex-direction: column;
-      align-items:flex-start;
-      flex-wrap:wrap;
+      flex-direction:column;
+      line-height:1.04;
       text-transform: uppercase;
+      color:#111;
     }
-    .brand .tagline .att{
-      position: relative;
-      font-size: 15px;
-      font-weight: 500;
-      letter-spacing: .55em;
-      color: #111;
-      padding-bottom: 8px;
-      line-height: 1;
+    .brandTop{
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .14em;
     }
-    .brand .tagline .att::after{
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      height: 2px;
-      background: rgba(244, 122, 32, .85);
+    .brandDivider{
+      width: 100%;
+      height: 1px;
+      background: rgba(244,122,32,.95);
+      margin: 8px 0 7px;
     }
-    .brand .tagline .mgmt{
-      margin-top: 10px;
-      font-size: 14px;
+    .brandBottom{
+      font-size: 16px;
       font-weight: 600;
       letter-spacing: .08em;
-      color: rgba(17, 17, 17, .72);
-      line-height: 1;
+    }
+
+    /* Modern Typography Styling */
+    .main-heading {
+      font-family: 'Poppins', sans-serif;
+      font-size: 28px;
+      font-weight: 300; /* thinner */
+      letter-spacing: 6px; /* key part for spaced effect */
+      color: #333;
+      text-transform: uppercase;
+      margin: 0 0 10px 0;
+      line-height: 1.2;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      font-variant-ligatures: no-common-ligatures;
+      position: relative;
+      padding-bottom: 12px;
+    }
+
+    .main-heading::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: #f57c00; /* orange from your theme */
+      border-radius: 1px;
+    }
+
+    .sub-heading {
+      font-family: 'Poppins', sans-serif;
+      font-size: 18px;
+      font-weight: 300; /* thinner */
+      letter-spacing: 2px;
+      color: #555;
+      text-transform: uppercase;
+      margin: 0;
+      position: relative;
+      display: inline-block;
+      line-height: 1.3;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      font-variant-ligatures: no-common-ligatures;
     }
 
     .wrap{
@@ -406,13 +431,12 @@
   <div class="page">
     <div class="topbar">
       <div class="logoCircle" aria-label="AMS logo">
-        <img src="/static/ams-logo.png" alt="AMS" />
+        <img src="/static/ams-login-logo.png?v=1" alt="AMS" />
       </div>
       <div class="brand">
-        <div class="ams"><span class="a">A</span><span class="ms">MS</span></div>
-        <div class="tagline" aria-label="Attendance Management System">
-          <span class="att">ATTENDANCE</span>
-          <span class="mgmt">MANAGEMENT SYSTEM</span>
+        <div>
+          <h1 class="main-heading">AI-Powered Face Recognition-Based</h1>
+          <h2 class="sub-heading">Attendance Management System with Full-Stack Integration</h2>
         </div>
       </div>
     </div>
@@ -477,7 +501,6 @@
 
           <button class="btn" type="submit">Login</button>
 
-          <div class="forgot">Forgot your password?</div>
 
         </form>
         </section>
